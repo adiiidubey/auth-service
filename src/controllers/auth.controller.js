@@ -17,9 +17,7 @@ export const signup = async (req, res) => {
 		// Validate input using zod
 		const parsed = signupSchema.safeParse(req.body);
 		if (!parsed.success) {
-			return res
-				.status(400)
-				.json({ error: parsed.error.errors[0].message });
+			return res.status(400).json({ error: parsed.error.errors[0].message });
 		}
 
 		// Extract from parsed object (validated data)
@@ -60,9 +58,7 @@ export const login = async (req, res) => {
 		// Validate login input
 		const parsed = loginSchema.safeParse(req.body);
 		if (!parsed.success) {
-			return res
-				.status(400)
-				.json({ error: parsed.error.errors[0].message });
+			return res.status(400).json({ error: parsed.error.errors[0].message });
 		}
 
 		const { email, password } = parsed.data;
@@ -106,7 +102,6 @@ export const login = async (req, res) => {
  */
 export const forgotPassword = async (req, res) => {
 	const { email } = req.body;
-
 	try {
 		const user = await User.findOne({ email });
 		if (!user) {
@@ -116,7 +111,7 @@ export const forgotPassword = async (req, res) => {
 		const resetToken = user.generatePasswordResetToken();
 		await user.save({ validateBeforeSave: false });
 
-        // Frontend link
+		// Frontend link
 		const resetURL = `http://localhost:5173/reset-password/${resetToken}`;
 		const message = `Reset your password by clicking this link:\n\n${resetURL}\n\nThis link expires in 15 minutes.`;
 
@@ -126,14 +121,9 @@ export const forgotPassword = async (req, res) => {
 			text: message,
 		});
 
-		return res
-			.status(200)
-			.json({ message: "Reset email sent successfully" });
+		return res.status(200).json({ message: "Reset email sent successfully" });
 	} catch (error) {
 		console.error("Forgot password error:", error);
-		User.resetPasswordToken = undefined;
-		User.resetPasswordExpire = undefined;
-		await User.save({ validateBeforeSave: false });
 		return res.status(500).json({ error: "Email could not be sent" });
 	}
 };
@@ -142,4 +132,30 @@ export const forgotPassword = async (req, res) => {
  * @route   POST /api/auth/reset-password/:token
  * @desc    Reset password using token
  */
+export const resetPassword = async (req, res) => {
+	const { token } = req.params;
+	const { password } = req.body;
 
+	const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
+
+	try {
+		const user = await User.findOne({
+			resetPasswordToken: hashedToken,
+			resetPasswordExpire: { $gt: Date.now() }, // check expiry
+		});
+
+		if (!user) {
+			return res.status(400).json({ error: "Token is invalid or has expired" });
+		}
+
+		user.password = password;
+		user.resetPasswordToken = undefined;
+		user.resetPasswordExpire = undefined;
+		await user.save();
+
+		return res.status(200).json({ message: "Password reset successful" });
+	} catch (error) {
+		console.error("Reset password error:", error);
+		return res.status(500).json({ error: "Something went wrong" });
+	}
+};
